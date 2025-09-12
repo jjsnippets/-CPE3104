@@ -1,0 +1,24 @@
+# Compiled output
+*.exe
+*.bin
+*.obj
+*.o
+
+# Debug & listing
+*.lst
+*.map
+*.tmp
+*.bak
+
+# Logs and out files
+*.log
+*.out
+
+# IDE or OS specific
+.DS_Store
+Thumbs.db
+
+# Build folders
+build/
+output/
+dist/
