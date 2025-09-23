@@ -2,8 +2,8 @@
 ; [see TMC2.asm for the unmodified code]
 
 ; TMC-2
-; Looping/Branching instructions. Create an assembly language program that lets the user input a string.
-; The program determines the number of vowels found on that string
+; Arithmetic instructions. Create an assembly language program that lets
+; the user input a value and determines whether that value is odd or even.
 
 CR EQU 0DH      ; Carriage Return
 LF EQU 0AH      ; Line Feed
@@ -13,7 +13,7 @@ ORG 100H
 JMP START
 TEXT1 DB 'Input a string: $'
 TEXT2 DB CR, LF, 'The string contains $'
-TEXT3 DB CR, LF, ' vowel(s)!$'
+TEXT3 DB ' vowel(s)!$'
 BUFFR DB 25, ?, 25 DUP(' ')
 
 START:
@@ -67,9 +67,26 @@ START:
             JMP vowel_loop
 
 print:
+    PUSH AX    
+
+    ; Print out TEXT2
+    MOV AH, 09H
+    MOV DX, OFFSET TEXT2
+    INT 21H
+    
+    POP DX
+    MOV DH, 0H
+    ADD DL, '0'
+    
+    MOV AH, 02H
+    INT 21H 
+    
+    ; Print out TEXT3
+    MOV AH, 09H
+    MOV DX, OFFSET TEXT3
+    INT 21H
 
 term:
-    MOV DX, AX
     ; exit from program
     MOV AH, 4CH
     INT 21H
