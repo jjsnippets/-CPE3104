@@ -1,7 +1,9 @@
 ; CPE 3104 - MICROPROCESSORS
 ; Group 3   TTh 4:30 PM - 7:30 PM LBCEAC1 TC
-; Ayabe, Kaishu; Sarcol, Joshua           BS-CpE 3        2025/09/22
-; LE3-5 | BIOS Interrupts  
+; Ayabe, Kaishu; Sarcol, Joshua           BS-CpE 3        2025/09/27
+; LE3-5 | Mouse and Keyboard Programming
+
+; Activity #1  
 
 CR EQU 0DH                  ; Carriage Return
 LF EQU 0AH                  ; Line Feed
@@ -17,13 +19,13 @@ YCORD1 EQU 21
 XCORD2 EQU 5
 YCORD2 EQU 19
 XCORD3 EQU 6
-YCORD3 EQU 20
+YCORD3 EQU 21
 
 ORG 100H
 
 .data
 TEXT1 DB    'MENU$'
-TEXT2 DB    '1 - HORIZONTAL STRIPES', CR, LF, '2 - VERTICAL STRIPES', CR, LF, '3 - CHECKERED PATTERN', CR, LF, CR, LF, 'Q - QUIT', CR, LF, '$'
+TEXT2 DB    '1 - HORIZONTAL STRIPES', CR, LF, '2 - VERTICAL STRIPES', CR, LF, 'F1 - CHECKERED PATTERN', CR, LF, CR, LF, 'Q - QUIT', CR, LF, '$'
 TEXT3 DB    'ENTER CHOICE: $'
 TEXT4 DB    'Press any key to continue$'
  

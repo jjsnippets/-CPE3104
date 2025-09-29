@@ -5,16 +5,19 @@
 
 ; Activity #2
 
+CR EQU 0DH                      ; Carriage Return
+LF EQU 0AH                      ; Line Feed
+
 ORG 100H
 
 .data
 ANAME DB 'Enter name: ', '$'
 SNAME DB 25, ?, 25 DUP(' ')
 
-APROGRAM DB 0DH, 0AH, 'Enter program: ', '$'
+APROGRAM DB CR, LF, 'Enter program: ', '$'
 SPROGRAM DB 25, ?, 25 DUP(' ')
 
-AYEAR DB 0DH, 0AH, 'Enter year level: ', '$'
+AYEAR DB CR, LF, 'Enter year level: ', '$'
 SYEAR DB 10, ?, 10 DUP(' ')
 
 AREPEAT DB 0DH, 0AH, 'Repeat number of times (single digit): ', '$'
@@ -95,8 +98,8 @@ CHAR_INPUT PROC NEAR
         MOV AX, 0100H    
         INT 21H                 ; Single character input
         
-        CMP AL, 0DH             ; Carriage return             
-        JZ end_char             ; If user presses enter, then exit loop
+        CMP AL, '$'             ; If user presses '$'             
+        JZ end_char             ; then exit loop
     
     next_char:
         INC BL                  ; Increment length of string
@@ -108,11 +111,11 @@ CHAR_INPUT PROC NEAR
     end_char:
         INC BL                  
         MOV [DI + 1], BL
-        MOV [DI + BX + 1], 0AH  ; Insert line feed
+        MOV [DI + BX + 1], CR   ; Insert line feed
         
         INC BL                  ; Insert carriage return
         MOV [DI + 1], BL
-        MOV [DI + BX + 1], 0DH
+        MOV [DI + BX + 1], LF
         
         MOV [DI + BX + 2], '$'  ; Insert '$' at end of string
         RET
