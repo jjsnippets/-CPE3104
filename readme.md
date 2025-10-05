@@ -4,7 +4,7 @@
 <br>
 
 This is an actively worked on repository which contains all code for the above-mentioned subject as a third year Computer Engineer student in the University of San Carlos.
- - All code is in assembly (FASM)
+ - All code is in assembly
 <br>
 
 <br>
