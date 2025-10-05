@@ -3,7 +3,7 @@
 ; Ayabe, Kaishu; Sarcol, Joshua           BS-CpE 3        2025/09/18
 ; LE3-1 | Arithmetic Operations
 
-; Activity #2
+; Activity #2a
 
 ORG 100H
 
@@ -14,16 +14,6 @@ varB EQU 5
 varD EQU 2
 varE EQU 1
 res1 DB 0H
-
-; Any byte value for Y, Z, W
-; as long as the result is by 100
-; (Assumed no remainder)
-; and Z*W < 255
-varY EQU 25
-varZ EQU 25
-varW EQU 3
-res2 DB 0H      ; For Y = 25, Z = 25, W = 3
-                ; Then Z = 1
 
 .code
 ; Calculation 1
@@ -56,23 +46,8 @@ POP BX
 ADD AL, BL      ; -8 + 10 = 2
                 ; Final result of 2 at AX
 
-MOV BX, offset res1
+MOV BX, OFFSET res1
 MOV [BX], AL    ; Save results at res1
 
-; Calculation 2
-; X = (Y + Z * W) / 100
-MOV AL, varZ    ; Load values of variables in registers
-MOV BL, varW
-MOV CL, varY
-MOV DL, 100     ; constant 100 decimal in DX
-
-MUL BL          ; Z * W
-                ; Assumed that result is less than 0FFH
-ADD AL, CL      ; (Z * W) + Y
-DIV DL          ; ((Z * W)+ Y) / 100
-                ; Final result is at AX
-
-MOV BX, offset res2
-MOV [BX], AL    ; Save results at res2
-
+; Terminate program
 INT 20H
