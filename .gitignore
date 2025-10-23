@@ -1,3 +1,4 @@
+## emu8086
 # Compiled output
 *.exe
 *.bin
@@ -22,3 +23,35 @@ Thumbs.db
 build/
 output/
 dist/
+
+## Proteus 8.11
+# Proteus backup and autosave files
+*.PDSBAK
+*.BAK
+*.TMP
+
+# Proteus autosave and recovery directories
+*/Backup/
+*/Autosave/
+*/Temp/
+*.log
+
+# Simulation output files
+*.hex
+*.elf
+*.obj
+*.cof
+
+# Compiled object and dependency files
+*.o
+*.d
+*.exe
+
+# External or generated firmware directories
+fehproteusfirmware/
+
+# IDE and editor metadata
+.vscode/
+.idea/
+*.workspace
+*.layout
