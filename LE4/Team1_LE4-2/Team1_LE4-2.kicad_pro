@@ -359,12 +359,36 @@
           "label": "Datasheet",
           "name": "Datasheet",
           "show": true
+        },
+        {
+          "group_by": false,
+          "label": "Sim.Pins",
+          "name": "Sim.Pins",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "Sim.Device",
+          "name": "Sim.Device",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "Description",
+          "name": "Description",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "#",
+          "name": "${ITEM_NUMBER}",
+          "show": false
         }
       ],
       "filter_string": "",
       "group_symbols": true,
       "include_excluded_from_bom": true,
-      "name": "Default Editing",
+      "name": "",
       "sort_asc": true,
       "sort_field": "Reference"
     },
@@ -412,6 +436,22 @@
     [
       "b5fd28f6-8fd0-4488-96f8-6e318abb789b",
       "Root"
+    ],
+    [
+      "e7955539-17a5-485d-b034-cf2d7fc5987f",
+      "Address Decoder"
+    ],
+    [
+      "78aea7e6-dbe2-4a3b-9535-39aaca407fe0",
+      "RAM Array"
+    ],
+    [
+      "b4000b66-564c-4a4e-900d-43d13d4aa485",
+      "ROM Array"
+    ],
+    [
+      "8241e228-8ed8-44b7-aeb2-bcaba5091b60",
+      "Bus Buffering and Latching"
     ]
   ],
   "text_variables": {}
