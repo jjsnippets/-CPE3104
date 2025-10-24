@@ -55,3 +55,18 @@ fehproteusfirmware/
 .idea/
 *.workspace
 *.layout
+
+## KiCad 9.0.5
+# KiCad backups
+*-backups/
+*.bak
+*.bck
+*.kicad_sch-bak
+*.kicad_pcb-bak
+
+# Generated files
+*.erc
+*.net
+*.xml
+*-cache.lib
+*-rescue.lib

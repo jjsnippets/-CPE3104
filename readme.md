@@ -1,10 +1,17 @@
 # CPE 3104 (MICROPROCESSORS)
 > Check branches for codes of current activities. <br>
-> For best compatilbility, use **emu8086 v4.08**
+> For best compatilbility, refer to the software versions below
 <br>
 
-This is an actively worked on repository which contains all code for the above-mentioned subject as a third year Computer Engineer student in the University of San Carlos.
+This is an actively worked on repository which contains all outputs for the above-mentioned subject as a third year Computer Engineer student in the University of San Carlos.
  - All code is in assembly
+
+<br>
+
+Software used:
+ - emu8086 v4.08
+ - Proteus 8.11 SP0
+ - KiCad 9.0.5
 <br>
 
 <br>
@@ -19,7 +26,7 @@ This is an actively worked on repository which contains all code for the above-m
 <br><br><br>
 
 Subject information: <br>
-<sub> Group: 03 </sub> <br>
+<sub> Group: 04 </sub> <br>
 <sub> Schedule: TTh 4:30 PM – 7:30 PM LBCEAC2 </sub> <br>
 <sub> Faculty: Bl- Ma- </sub> <br>
 <br><br><br>
