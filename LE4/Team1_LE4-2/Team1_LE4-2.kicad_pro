@@ -438,20 +438,20 @@
       "Root"
     ],
     [
-      "e7955539-17a5-485d-b034-cf2d7fc5987f",
-      "Address Decoder"
+      "8241e228-8ed8-44b7-aeb2-bcaba5091b60",
+      "Bus Buffering and Latching"
     ],
     [
-      "78aea7e6-dbe2-4a3b-9535-39aaca407fe0",
-      "RAM Array"
+      "e7955539-17a5-485d-b034-cf2d7fc5987f",
+      "Address Decoder"
     ],
     [
       "b4000b66-564c-4a4e-900d-43d13d4aa485",
       "ROM Array"
     ],
     [
-      "8241e228-8ed8-44b7-aeb2-bcaba5091b60",
-      "Bus Buffering and Latching"
+      "78aea7e6-dbe2-4a3b-9535-39aaca407fe0",
+      "RAM Array"
     ]
   ],
   "text_variables": {}
