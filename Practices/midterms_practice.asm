@@ -84,7 +84,10 @@ mul_arith:
     JMP disp_digits ; So CF will always be 0     
 
 div_arith:
-    MOV AH, 0       
+    CMP BL, 0       ; If about to divide by 0
+    JE div_by_zero  ; Then do not proceed to division
+                    ; Display an overflow instead              
+       
     DIV BL          ; AL => whole number part
     MOV AH, 0       ; AH => clear remainder
     JMP disp_digits           
@@ -95,17 +98,19 @@ disp_digits:
        
     ; If negative (CF == 1), then output the underflow indicator
     JNC not_negative
-    MOV AL, UF_IND
-    OUT DX, AL
-    JMP main_loop
+        MOV AL, UF_IND
+        OUT DX, AL
+        JMP main_loop
     not_negative:
     
     ; If over 99, then output the overflow indicator
     CMP AL, 99
-    JNG not_overflow
-    MOV AL, OF_IND
-    OUT DX, AL
-    JMP main_loop
+    JNA not_overflow
+    div_by_zero:
+        MOV DX, PORTA   ; Directly jump to this code if division by 0
+        MOV AL, OF_IND
+        OUT DX, AL
+        JMP main_loop
     not_overflow:
     
     ; Otherwise display the number normally
