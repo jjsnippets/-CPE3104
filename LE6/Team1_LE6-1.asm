@@ -23,87 +23,119 @@ ORG 100H
                         ; ----- -0- Output for PORTB
                         ; ----- --0 Output for PORTC3-0 (unused)
 
-.code
-; Set-up
-    MOV CX, 0
+.data
+STRNG DB "HELLO!"
+LEN EQU $ - STRNG    
     
+.code
     ; Program the 8255
     MOV DX, COM_REG
     MOV AL, 080H
     OUT DX, AL
     
-    ; Display digits to 0
-    MOV AL, 0H
-    MOV DX, PORTA       ; LSD
-    OUT DX, AL    
-    MOV DX, PORTB       ; MSD
-    OUT DX, AL
+    ; Set-up the LCD
+    CALL INIT_LCD
+      
+    ; Move cursor to desired location
+    MOV AL, 0C7H            ; 1100 0111 (C8H)
+                            ; 1??? ???? DDRAM Address set
+                            ; -100 0111 (48H)   
+    CALL INST_CTRL          ;           2nd line, 8th column
     
-main_loop:
+    ; Display string
+    MOV BX, 0               ; Counter
+    MOV SI, OFFSET STRNG    ; Address of the string to print
+    
+    disp_str:
+        MOV AL, [SI + BX]   ; Current character to print
+        CALL DATA_CTRL
+        
+        INC BX              ; Next character to print
+        
+        CMP BX, LEN + 1     ; Repeat LEN times
+        JNE disp_str        
+    
+HLT    
+
+; LCD Initialization function
+INIT_LCD:
     CALL delay
+      
+    MOV AL, 038H        ; 0011 1000 (38H)
+                        ; 001? ?0xx Function Set
+                        ; ---1 ---- 8-bit data transfer
+                        ; ---- 1--- Dual line display
+    CALL INST_CTRL      ; ---- -0-- 5x8 Font size
+        
+    MOV AL, 08H         ; 0000 1000 (08H)
+                        ; 0000 1??? Display ON/OFF
+                        ; ---- -0-- Entire display off
+                        ; ---- --0- Cursor off
+    CALL INST_CTRL      ; ---- ---0 Cursor blinking off
     
-; If button is pressed, increment counter by 1
-    MOV DX, PORTC
-    IN AL, DX
+    MOV AL, 01H         ; 0000 0001 (01H)
+    CALL INST_CTRL      ; 0000 0001 Clear Display
     
-    CMP AL, 01H
-    JNE main_loop
-    INC CX
+    MOV AL, 06H         ; 0000 0110 (06H)
+                        ; 0000 01?? Entry Mode Set
+                        ; ---- --1- Increment / Move right
+    CALL INST_CTRL      ; ---- ---0 No shifting
     
-; If counter == 100, then reset to 0
-    CMP CX, 100
-    JNE skip_reset
-    MOV CX, 0H
-    skip_reset:
-    
-; Display digits
-    MOV AX, CX
-    MOV BL, 10          ; AH = ones, AL = tens
-    DIV BL              ; Digits in AX now 7-segment compatible                 
+    MOV AL, 0CH         ; 0000 1100 (0CH)
+                        ; 0000 1??? Display ON/OFF
+                        ; ---- -1-- Entire display on
+                        ; ---- --0- Cursor off
+    CALL INST_CTRL      ; ---- ---0 Cursor blinking off
+RET
 
-    ; Display MSD    
-    MOV DX, PORTB
-    OUT DX, AL          
-
-    ; Display LSD    
-    MOV AL, AH
-    MOV DX, PORTA
+; LCD 8-bit instruction function
+; AX - Instruction to be moved (will be clobbered)
+INST_CTRL:
+    PUSH DX             ; Housekeeping
+    
+    MOV DX, DATAB       ; Instruction to LCD data bus
     OUT DX, AL
+    
+    MOV DX, CNTRL       ; Set control pins
+    MOV AL, 02H         ; Instruction Register
+    OUT DX, AL          ; E = 1, RS = 0 
+    
+    CALL delay          ; Wait before next instruction
+    
+    MOV AL, 00H         ; Not leave E always HIGH
+    OUT DX, AL
+    
+    POP DX              ; Housekeeping
+RET
 
-; Repeat forever     
-    JMP main_loop
+; LCD 8-bit data function
+; AX - Data to be moved (will be clobbered)
+DATA_CTRL:
+    PUSH DX             ; Housekeeping
+    
+    MOV DX, DATAB       ; To LCD data bus
+    OUT DX, AL
+    
+    MOV DX, CNTRL       ; Set control pins
+    MOV AL, 03H         ; Data Register
+    OUT DX, AL          ; E = 1, RS = 1 
+
+    CALL delay          ; Wait before next instruction
+    
+    MOV AL, 01H         ; Not leave E always HIGH
+    OUT DX, AL
+        
+    POP DX              ; Housekeeping
+RET
 
 ; Artificial delay
+; Should really check for BF (with interrupts)
 delay:
+    PUSH BX
     MOV BX, 0ACAH
     lp_:
     DEC BX
     NOP
     JNZ lp_
-    RET
-
-; LCD Initialization function
-INIT_LCD:
-    PUSH AX             ; Housekeeping
-    
-    MOV AL, 038H        ; 0011 1000 (38H)
-                        ; 001? ?0xx Instruction code
-                        ; ---1 ---- 8-bit data transfer
-                        ; ---- 1--- Dual line display
-                        ; ---- -0-- 5x8 Font size
-    CALL INST_CTRL
-    
-    POP AX              ; Housekeeping
-    RET
-
-INST_CTRL:
-    PUSH DX             ; Housekeeping
-    
-    
-    
-    POP DX              ; Housekeeping
-    RET
-
-DATA_CTRL:
-
+    POP BX
 RET
