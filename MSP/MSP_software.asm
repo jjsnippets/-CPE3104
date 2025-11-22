@@ -4,16 +4,16 @@
 ; Ayabe, Kaishu; Fernandez, Schumacher Jaryl; Perez, Julio Miguel; Sarcol, Joshua
 ; Mini Simulation Project
 
+; General comments on code:
+;   NOP instructions indicate delay. They may be replaced by CALL DELAY if need be. 
+;
+
 ; Case Study 2: Environment Sensor
 ; Being informed about the environment is important in our daily lives. Temperature,
 ; humidity and airpressure are key variables that affect the weather and our temper.
 ; The user can set a unit of measuring the temperature (Celsius or Fahrenheit) and
 ; pressure (atm or mb). The display updates in real-time to change in temperature,
 ; pressure and humidity.
-
-; General comments on code:
-;   NOP instructions indicate delay. They may be replaced by CALL DELAY if need be. 
-;
 
 ; High level implementation
 ; Set-up:
@@ -39,8 +39,9 @@
 ;
 ; Repeat forever starting from Temperature
 
-DATA    SEGMENT    
-    DELAY_TIME  EQU 00050H  ; Software looping delay
+DATA    SEGMENT
+    ORG 03000H    
+    DELAY_TIME  EQU 0004AH  ; Software looping delay
     
     P6_COM_REG  EQU 076H    ; PORT6 Command Register (8255)
     P6_PROGRAM  EQU 080H    ; 10000 000 (80H)
@@ -61,27 +62,7 @@ DATA    SEGMENT
     LINE1       EQU 080H    ; LCD DDRAM Address locations
     LINE2       EQU 0C0H
     LINE3       EQU 094H
-    LINE4       EQU 0D4H
-    
-    LCD_INST1   EQU 038H    ; 0011 1000 (38H)
-                            ; 001? ?0xx Function Set
-                            ; ---1 ---- 8-bit data transfer
-                            ; ---- 1--- Dual line display
-                            ; ---- -0-- 5x8 Font size
-                            
-    LCD_INST2   EQU 00CH    ; 0000 1100 (0CH)
-                            ; 0000 1??? Display ON/OFF
-                            ; ---- -1-- Entire display on
-                            ; ---- --0- Cursor off
-                            ; ---- ---0 Cursor blinking off
-                            
-    LCD_INST3   EQU 001H    ; 0000 0001 (01H)
-                            ; 0000 0001 Clear Display
-    
-    LCD_INST4   EQU 006H    ; 0000 0110 (06H)
-                            ; 0000 01?? Entry Mode Set
-                            ; ---- --1- Increment / Move right
-                            ; ---- ---0 No shifting                                                                             
+    LINE4       EQU 0D4H                                                                             
     
     LED_LIGHT   EQU 074H    ; "Hot" LED indicator
     
@@ -135,6 +116,7 @@ STACK   ENDS
 
 CODE    SEGMENT PUBLIC 'CODE'
     ASSUME CS:CODE, DS:DATA, SS:STACK
+    ORG 08000H
 START:
 ; Set-up
     ; Program PORT6
@@ -148,17 +130,33 @@ START:
     OUT DX, AL
     
     ; Program the LCD
-    MOV AL, LCD_INST1       ; Function set
-    CALL LCD_INST
+    CALL DELAY
+      
+    MOV AL, 038H            ; 0011 1000 (38H)
+                            ; 001? ?0xx Function Set
+                            ; ---1 ---- 8-bit data transfer
+                            ; ---- 1--- Dual line display
+    CALL LCD_INST           ; ---- -0-- 5x8 Font size
+        
+    MOV AL, 08H             ; 0000 1000 (08H)
+                            ; 0000 1??? Display ON/OFF
+                            ; ---- -0-- Entire display off
+                            ; ---- --0- Cursor off
+    CALL LCD_INST           ; ---- ---0 Cursor blinking off
     
-    MOV AL, LCD_INST2       ; Display control
-    CALL LCD_INST
+    MOV AL, 01H             ; 0000 0001 (01H)
+    CALL LCD_INST           ; 0000 0001 Clear Display
     
-    MOV AL, LCD_INST3       ; Display clear
-    CALL LCD_INST
+    MOV AL, 06H             ; 0000 0110 (06H)
+                            ; 0000 01?? Entry Mode Set
+                            ; ---- --1- Increment / Move right
+    CALL LCD_INST           ; ---- ---0 No shifting
     
-    MOV AL, LCD_INST4       ; Entry Mode set
-    CALL LCD_INST
+    MOV AL, 0CH             ; 0000 1100 (0CH)
+                            ; 0000 1??? Display ON/OFF
+                            ; ---- -1-- Entire display on
+                            ; ---- --0- Cursor off
+    CALL LCD_INST           ; ---- ---0 Cursor blinking off
     
     ; Preset display for the LCD
     MOV SI, OFFSET DISP1
@@ -203,8 +201,8 @@ RET
 ; LCD 8-bit data transfer function
 ; AX << Data to be moved (will be clobbered)
 LCD_DATA:
-    PUSH DX                 ; Housekeeping
-    
+    PUSH DX                 ; Housekeeping    
+
     MOV DX, LCD_DISPLAY     ; Data to LCD data bus
     OUT DX, AL
     
@@ -238,8 +236,8 @@ LCD_LINE:
         INC SI              ; Next character to be displayed
         LOOP indiv_char     ; Repeat 20 times
     
-    PUSH CX                 ; Housekeeping
-    PUSH AX
+    POP CX                 ; Housekeeping
+    POP AX
 RET        
 
 ; ADC data request from an analog channel
@@ -276,8 +274,8 @@ ADC_REQUEST:
     XOR AX, AX              ; Clear AX
     IN AL, DX
     
-    PUSH BX                 ; Housekeeping
-    PUSH DX
+    POP BX                 ; Housekeeping
+    POP DX
 RET    
 
 ; Software delay loop
