@@ -174,8 +174,17 @@ START:
     MOV SI, OFFSET DISP4
     MOV DI, LINE4
     CALL LCD_LINE
+
+; Temporary
+; Determining range of each analog channel
+temp_loop:
+    ; Select nth analog channel
+    MOV AX, 000H
+    CALL ADC_REQUEST
     
-     
+    CALL DELAY
+    JMP temp_loop
+  
 HLT
 
 ; LCD 8-bit instruction transfer function
