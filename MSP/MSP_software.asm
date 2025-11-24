@@ -21,8 +21,9 @@
 ;   Set-up the LCD to display default information
 ; 
 ; Temperature:
-;   Grab data from temperature sensor
 ;   Determine from button if temperature to be displayed is in C or F
+;   Grab data from temperature sensor
+;   Decide if any of the LED indicators should be turned on or not
 ;   Manipulate data from ADC and convert if necessary
 ;   Display results to LCD screen
 ;
@@ -40,7 +41,9 @@
 ; Repeat forever starting from Temperature
 
 DATA    SEGMENT
-    ORG 03000H    
+    ORG 03000H
+    
+    ; Constants    
     DELAY_TIME  EQU 00070H  ; Software looping delay
     
     P6_COM_REG  EQU 076H    ; PORT6 Command Register (8255)
@@ -64,8 +67,11 @@ DATA    SEGMENT
     LINE3       EQU 094H
     LINE4       EQU 0D4H                                                                             
     
-    LED_LIGHT   EQU 074H    ; "Hot" LED indicator
-    
+    LED_LIGHTS  EQU 074H    ; LED indicators
+                            ; ---C ---H
+                            ; ---C ---- COLD LED indicator
+                            ; ---- ---H HOT LED indicator
+
     
     P7_COM_REG  EQU 07EH    ; PORT7 Command Register (8255)
     P7_PROGRAM  EQU 099H    ; 10011 001 (99H)
@@ -89,16 +95,37 @@ DATA    SEGMENT
     PRES_SELECT EQU 002H    ; ---- -010 Atmospheric Sensor Select (MPX4115)
     
     BUTTON_DATA EQU 07CH    ; Unit switching buttons
-                            ; ---- --PT
-                            ; ---- --P- Atmospheric pressure toggle (atm / mb)
+                            ; ---P ---T
+                            ; ---P ---- Atmospheric pressure toggle (atm / mb)
                             ; ---- ---T Temperature toggle (C / F)
-
-    DISP1 DB " Outside Conditions "
-    DISP2 DB "Temp.:              "
-    DISP3 DB "Humi.:              "
-    DISP4 DB "Pres.:              "
     
-    UNIT_RH DB "% RH  "
+    ; String definitions
+    DISP1       DB " Outside Conditions "
+    DISP1_L     EQU $ - DISP1
+    DISP2       DB "Temp.:              "
+    DISP2_L     EQU $ - DISP2
+    DISP3       DB "Humi.:              "
+    DISP3_L     EQU $ - DISP3
+    DISP4       DB "Pres.:              "
+    DISP4_L     EQU $ - DISP4
+    
+    UNIT_C      DB " dC    "
+    UNIT_C_L    EQU $ - UNIT_C
+    UNIT_F      DB " dF    "
+    UNIT_F_L    EQU $ - UNIT_F
+    UNIT_RH     DB "% RH  "
+    UNIT_RH_L   EQU $ - UNIT_RH
+    UNIT_ATM    DB " atm   "
+    UNIT_ATM_L  EQU $ - UNIT_ATM
+    UNIT_MB     DB " atm   "
+    UNIT_MB_L   EQU $ - UNIT_MB
+
+    ; Variables    
+    TEMP_FF     DB 0        ; Holds the previous button states before polling 
+    PRES_FF     DB 0        ; For software T flip-flop implementation (rising edge)
+    
+    TEMP_TOGGLE DB 0        ; 0 = Celsius   1 = Fahrenheit
+    PRES_TOGGLE DB 0        ; 0 = atm       1 = mb 
                      
 DATA    ENDS
 
@@ -106,15 +133,6 @@ STACK   SEGMENT PARA STACK
     DW 64 DUP(?)            ; Reserve 64 words for stack
 TOS DW ?                    ; Top of stack marker
 STACK   ENDS
-
-; INTERRUPT HANDLERS HERE
-;HANDLER0    SEGMENT
-;ISR0    PROC FAR
-;    ASSUME CS:HANDLER0, DS:DATA, SS:STACK
-;    ORG 01000H    
-; 
-;ISR0    ENDP
-;HANDLER0    ENDS
 
 CODE    SEGMENT PUBLIC 'CODE'
     ASSUME CS:CODE, DS:DATA, SS:STACK
@@ -157,25 +175,70 @@ START:
     ; Preset display for the LCD
     MOV SI, OFFSET DISP1
     MOV DI, LINE1
-    MOV CX, 20
+    MOV CX, DISP1_L
     CALL LCD_PRINT
     
     MOV SI, OFFSET DISP2
     MOV DI, LINE2
-    MOV CX, 20
+    MOV CX, DISP2_L
     CALL LCD_PRINT     
 
     MOV SI, OFFSET DISP3
     MOV DI, LINE3
-    MOV CX, 20
+    MOV CX, DISP3_L
     CALL LCD_PRINT
     
     MOV SI, OFFSET DISP4
     MOV DI, LINE4
-    MOV CX, 20
+    MOV CX, DISP4_L
     CALL LCD_PRINT
 
 main_loop:
+; Temperature
+    ; Determine from button if temperature to be displayed is in C or F
+    MOV DX, BUTTON_DATA     ; Data from buttons
+    XOR AX, AX
+    IN AL, DX    
+    AND AL, 01H             ; Only interested in bit 0
+    
+    CMP [TEMP_FF], 1        ; If the value at TEMP_FF is 1
+    JE temp_held            ; Then the button "was" held    
+                            ; Otherwise, it was in the released state
+    
+    CMP AL, 1               ; If the current state is then 1
+    JNE temp_button_end     ; Then it indicates a rising edge
+    
+    NOT TEMP_TOGGLE         ; Rising edge, so toggle the output
+    MOV [TEMP_FF], 1        ; Finished rising edge logic
+    JMP temp_button_end
+    
+    temp_held:
+    CMP AL, 0               ; If the current state is then 0
+    JNE temp_button_end     ; Then it indicates a falling edge
+    
+    MOV [TEMP_FF], 0        ; Finished falling edge logic
+    
+    temp_button_end:
+    MOV DX, LED_LIGHTS
+    MOV AL, [TEMP_TOGGLE]
+    OUT DX, AL    
+    
+; Grab data from temperature sensor
+;    MOV AX, TEMP_SELECT     
+;    CALL ADC_REQUEST
+       
+; Decide if any of the LED indicators should be turned on or not
+    ; Notes
+    ; Dangerously Hot: 42C
+    ; Caution Heat: 33C
+    ; Cold: 20C
+    ; To be implemented later
+
+; Manipulate data from ADC and convert if necessary
+
+
+; Display results to LCD screen
+
 ; Relative Humidity
     ; Grab data from relative humidity sensor
     MOV AX, HUMI_SELECT     
@@ -188,9 +251,9 @@ main_loop:
     CALL CALC_SENSOR        ; y = (100x - 4800)/203
 
     ; Display results to LCD screen
-    MOV CX, 6
     MOV SI, OFFSET UNIT_RH
     MOV DI, LINE3 + 7
+    MOV CX, UNIT_RH_L
     CALL LCD_RESULT
 
     JMP main_loop
