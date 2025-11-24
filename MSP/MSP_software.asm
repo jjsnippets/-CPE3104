@@ -41,7 +41,7 @@
 
 DATA    SEGMENT
     ORG 03000H    
-    DELAY_TIME  EQU 0004AH  ; Software looping delay
+    DELAY_TIME  EQU 00070H  ; Software looping delay
     
     P6_COM_REG  EQU 076H    ; PORT6 Command Register (8255)
     P6_PROGRAM  EQU 080H    ; 10000 000 (80H)
@@ -94,9 +94,11 @@ DATA    SEGMENT
                             ; ---- ---T Temperature toggle (C / F)
 
     DISP1 DB " Outside Conditions "
-    DISP2 DB "Temperature:        "
-    DISP3 DB "Rel. Humid.:        "
-    DISP4 DB "Atm. Press.:        "
+    DISP2 DB "Temp.:              "
+    DISP3 DB "Humi.:              "
+    DISP4 DB "Pres.:              "
+    
+    UNIT_RH DB "% RH  "
                      
 DATA    ENDS
 
@@ -138,9 +140,9 @@ START:
                             ; ---- 1--- Dual line display
     CALL LCD_INST           ; ---- -0-- 5x8 Font size
         
-    MOV AL, 08H             ; 0000 1000 (08H)
+    MOV AL, 0CH             ; 0000 1100 (0CH)
                             ; 0000 1??? Display ON/OFF
-                            ; ---- -0-- Entire display off
+                            ; ---- -1-- Entire display on
                             ; ---- --0- Cursor off
     CALL LCD_INST           ; ---- ---0 Cursor blinking off
     
@@ -152,38 +154,46 @@ START:
                             ; ---- --1- Increment / Move right
     CALL LCD_INST           ; ---- ---0 No shifting
     
-    MOV AL, 0CH             ; 0000 1100 (0CH)
-                            ; 0000 1??? Display ON/OFF
-                            ; ---- -1-- Entire display on
-                            ; ---- --0- Cursor off
-    CALL LCD_INST           ; ---- ---0 Cursor blinking off
-    
     ; Preset display for the LCD
     MOV SI, OFFSET DISP1
     MOV DI, LINE1
-    CALL LCD_LINE
+    MOV CX, 20
+    CALL LCD_PRINT
     
     MOV SI, OFFSET DISP2
     MOV DI, LINE2
-    CALL LCD_LINE     
+    MOV CX, 20
+    CALL LCD_PRINT     
 
     MOV SI, OFFSET DISP3
     MOV DI, LINE3
-    CALL LCD_LINE
+    MOV CX, 20
+    CALL LCD_PRINT
     
     MOV SI, OFFSET DISP4
     MOV DI, LINE4
-    CALL LCD_LINE
+    MOV CX, 20
+    CALL LCD_PRINT
 
-; Temporary
-; Determining range of each analog channel
-temp_loop:
-    ; Select nth analog channel
-    MOV AX, 000H
+main_loop:
+; Relative Humidity
+    ; Grab data from relative humidity sensor
+    MOV AX, HUMI_SELECT     
     CALL ADC_REQUEST
     
-    CALL DELAY
-    JMP temp_loop
+    ; Manipulate data from ADC
+    MOV BX, 100
+    MOV CX, -4800
+    MOV DI, 203    
+    CALL CALC_SENSOR        ; y = (100x - 4800)/203
+
+    ; Display results to LCD screen
+    MOV CX, 6
+    MOV SI, OFFSET UNIT_RH
+    MOV DI, LINE3 + 7
+    CALL LCD_RESULT
+
+    JMP main_loop
   
 HLT
 
@@ -227,17 +237,16 @@ LCD_DATA:
     POP DX                  ; Housekeeping
 RET
 
-; Helper function that prints 1 line (20 characters) into the LCD screen
+; Helper function that prints CX characters into the LCD screen
 ; SI << Starting address of String (auto-increment)
 ; DI << Starting LCD DDRAM address
-LCD_LINE:
+; CX << Number of characters to print
+LCD_PRINT:
     PUSH AX                 ; Housekeeping
-    PUSH CX
     
     MOV AX, DI              ; Move cursor to starting position
     CALL LCD_INST
     
-    MOV CX, 20              ; Print a total of 20 characters
     indiv_char:
         MOV AL, [SI]        ; Grab a character from SI
         CALL LCD_DATA       ; Display that character
@@ -245,47 +254,152 @@ LCD_LINE:
         INC SI              ; Next character to be displayed
         LOOP indiv_char     ; Repeat 20 times
     
-    POP CX                 ; Housekeeping
-    POP AX
-RET        
+    POP AX                 ; Housekeeping
+RET
+        
+; Displays a number to the LCD screen
+; AX << The number to be displayed (positive only)
+; CX << Length of the string found in CX
+; SI << The string address of the unit to be displayed (auto increment)
+; DI << Starting LCD DDRAM address
+LCD_RESULT:
+    PUSH BX
+    PUSH DX                 ; Housekeeping
+
+; Set-up
+    PUSH CX                 ; Save the string length    
+    PUSH AX                 ; Save the number to be displayed
+    
+    MOV AX, DI              ; Move cursor to starting position
+    CALL LCD_INST 
+    
+    POP AX                  ; Retrieve AX from stack
+    MOV BL, 10              ; Division by 10    
+    XOR CX, CX              ; Counter for amount of numbers to display
+    XOR DX, DX              ; Temporary register used to push to/pop from stack
+    
+    ; Special case
+    ; If the number to be displayed is 0
+        CMP AX, 0           ; If not zero
+        JNE div_loop        ; Then go to normal case
+    
+        PUSH AX             ; Otherwise, push the 0 value
+        INC CX              ; Length of the number is 1
+        JMP _exit_div       ; Proceed to displaying the number
+    
+    ; Normal case
+    ; If the number to be displayed is not 0
+    div_loop:      
+        DIV BL              ; AL = whole number result
+                            ; AH = remainder
+                            
+        MOV DL, AH          ; Copy remainder to DX
+        PUSH DX             ; Push to stack
+        INC CX              ; Increment number length counter
+        
+        XOR AH, AH          ; Clear AH for proper re-division
+
+        CMP AX, 0           ; If the number to be divided is 0
+        JE _exit_div        ; Then end the division loop    
+    JMP div_loop            ; Otherwise, repeat division loop
+    
+    _exit_div:
+    ADD DI, CX
+
+; Display the number
+    print_loop:                            
+        POP AX              ; Retrieve number to be displayed from stack
+        OR AL, 030H         ; ASCII Conversion
+        CALL LCD_DATA       ; Display to LCD
+    
+    LOOP print_loop         ; If there are no numbers to print
+                            ; Then proceed to displaying the unit             
+
+; Display the unit    
+    POP CX                  ; Retrieve CX from stack    
+                            ; SI untouched
+                            ; DI = DI + CX right after the division loop
+    CALL LCD_PRINT          ; Display the unit                             
+        
+    POP DX                  ; Housekeeping
+    POP BX    
+RET
 
 ; ADC data request from an analog channel
 ; AX << Analog channel select (will be clobbered by output)
 ; AX >> 8-bit data from ADC
 ADC_REQUEST:
     PUSH BX                 ; Housekeeping
-    PUSH DX                 
+    PUSH DX                
                             ; Input integrity safeguard
     MOV BH, 00000111B       ; Bit-mask to only select the first 3 bits
     AND AL, BH              ; 0000 0CBA
     
     MOV DX, ADC_CONTROL     ; Select analog channel
     OUT DX, AL
-    NOP
+    CALL DELAY
     
     MOV BL, 00010000B       ; ALE = 1 
     OR AL, BL               ; 0001 0CBA         
     OUT DX, AL
-    NOP
+    CALL DELAY
     
     MOV BL, 00100000B       ; START = 1, ALE = 1
     OR AL, BL               ; 0011 0CBA
     OUT DX, AL              
-    NOP                     
+    CALL DELAY                     
     
     AND AL, BH              ; OE = 1, START = 0, ALE = 0
     MOV BL, 01000000B       ; Note: SHL was not used as it would use CL
     OR AL, BL               ; 0100 0CBA
     OUT DX, AL
-    NOP
+    CALL DELAY
     
     MOV DX, ADC_DATA        ; Read 8-bit data
     XOR AX, AX              ; Clear AX
     IN AL, DX
     
-    POP BX                 ; Housekeeping
-    POP DX
-RET    
+    POP DX                  ; Housekeeping
+    POP BX
+RET
+
+; Calculates the linear equation y = (ax + b)/c
+; 
+; Converts the 0 - 255 output x of the ADC to the real-world sensor value y
+;   y = (165x - 11750)/236 for -40C to 125C
+;   y = (297x - 13598)/236 for -40F to 257F
+;   y = (100x - 4800)/203 for 0% to 100% relative humidity
+;   y = (986x + 20088)/229 for 148 milli-atm to 1134 milli-atm
+;   y = (1000x + 20350)/229 for 150 millibar to 1150 millibar
+; 
+; AX << Input from the ADC
+; BX << Multiplier
+; CX << Signed constant
+; DI << Divisor
+; 
+; AX >> Signed result
+; DX >> Remainder after division (unused)
+CALC_SENSOR:
+; Multiplication AX * BX = (DX AX)
+    XOR AH, AH              ; Clear AH and flags
+    MUL BX                  ; Result is 32-bit, split across (DX AX)
+    
+; Addition (DX AX) + CX = (DX AX)
+    ; Assuming that CX is positive
+    ADD AX, CX              ; Low word addition
+    ADC DX, 0               ; Add carry to high word
+    
+    ; Negative CX correction
+    CMP CX, 0               
+    JGE _not_negative       ; If CX is positive, then no need to correct result
+    DEC DX                  ; Otherwise, subtract 1 from high word    
+    _not_negative:          ; Basically sign extending CX to 32-bit
+
+; Division (DX AX) / DI = AX
+    IDIV DI                 ; Signed divide.
+                            ; Whole number result in AX, Remainder in DX    
+
+RET
 
 ; Software delay loop
 DELAY:
