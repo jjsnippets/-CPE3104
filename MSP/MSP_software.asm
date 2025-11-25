@@ -33,9 +33,9 @@
 ;   Display results to LCD screen
 ;
 ; Atmospheric Pressure:
-;   Grab data from atmospheric pressure sensor
 ;   Determine from button if pressure to be displayed is in atm or mb
-;   Manipulate data from ADC and convert if necessary
+;   Grab data from atmospheric pressure sensor
+;   Manipulate data from ADC
 ;   Display results to LCD screen
 ;
 ; Repeat forever starting from Temperature
@@ -96,8 +96,9 @@ DATA    SEGMENT
     
     BUTTON_DATA EQU 07CH    ; Unit switching buttons
                             ; ---P ---T
-                            ; ---P ---- Atmospheric pressure toggle (atm / mb)
-                            ; ---- ---T Temperature toggle (C / F)
+    PRES_MASK   EQU 010H    ; ---P ---- Atmospheric pressure toggle (atm / mb)
+    TEMP_MASK   EQU 001H    ; ---- ---T Temperature toggle (C / F)
+                            
     
     ; String definitions
     DISP1       DB " Outside Conditions "
@@ -198,29 +199,11 @@ START:
 main_loop:
 ; Temperature
 ;   Determine from button if temperature to be displayed is in C or F
-    MOV DX, BUTTON_DATA     ; Data from buttons
-    XOR AX, AX
-    IN AL, DX    
-    AND AL, 01H             ; Only interested in bit 0
-    
-    CMP [TEMP_FF], 1        ; If the value at TEMP_FF is 1
-    JE temp_held            ; Then the button "was" held    
-                            ; Otherwise, it was in the released state
-    
-    CMP AL, 1               ; If the current state is then 1
-    JNE temp_button_end     ; Then it indicates a rising edge
-    
-    NOT TEMP_TOGGLE         ; Rising edge, so toggle the output
-    MOV TEMP_FF, 1          ; Finished rising edge logic
-    JMP temp_button_end
-    
-    temp_held:
-    CMP AL, 0                   ; If the current state is then 0
-    JNE temp_button_end         ; Then it indicates a falling edge
-    
-    MOV TEMP_FF, 0              ; Finished falling edge logic
-    
-    temp_button_end:    
+    MOV CX, TEMP_MASK
+    MOV SI, OFFSET TEMP_FF
+    MOV DI, OFFSET TEMP_TOGGLE    
+    CALL T_FLIPFLOP
+       
 ;   Grab data from temperature sensor
     MOV AX, TEMP_SELECT     
     CALL ADC_REQUEST
@@ -258,7 +241,7 @@ main_loop:
     MOV DI, LINE2 + 7           ; Position in LCD
     
     TEST [TEMP_NEGATE], 1       ; Check if temperature is negative
-    JZ not_negative
+    JZ not_negative             ; If not, then skip printing a "-" sign
     
     ; is_negative:       
         PUSH AX                 ; Save number
@@ -292,9 +275,103 @@ main_loop:
     MOV CX, UNIT_RH_L
     CALL LCD_RESULT
 
-    JMP main_loop
-  
+; Atmospheric Pressure
+;   Determine from button if pressure to be displayed is in atm or mb
+    MOV CX, PRES_MASK
+    MOV SI, OFFSET PRES_FF
+    MOV DI, OFFSET PRES_TOGGLE    
+    CALL T_FLIPFLOP
+
+;   Grab data from atmospheric pressure sensor
+    MOV AX, PRES_SELECT     
+    CALL ADC_REQUEST
+
+;   Manipulate data from ADC
+    CMP [PRES_TOGGLE], 0        ; If current state is 0, then value to calculate is in (milli) atmospheres
+    JNE calc_mb                 ; Otherwise, it is in millibar
+    
+    ; calc_matm:
+        MOV BX, 986
+        MOV CX, 20088
+        MOV DI, 229    
+        CALL CALC_SENSOR        ; y = (986x + 20088)/229 for 148 to 1134 milli-atm
+        
+        MOV SI, OFFSET UNIT_ATM ; Display atm in LCD
+        MOV CX, UNIT_ATM_L
+        MOV DI, LINE4 + 7
+    
+        ; Manual conversion from matm to atm
+            CMP AX, 1000        ; If value is less than 1.0 atm, display 0.
+            JB _zero_whole      ; Otherwise, display 1.
+    
+        ; _one_whole
+            SUB AX, 1000        ; Decimal part to display next
+            PUSH AX             ; Save AX
+        
+            MOV AX, DI          ; Move cursor to starting position
+            CALL LCD_INST
+        
+            MOV AL, "1"         ; Manually display a 1
+            CALL LCD_DATA
+            JMP _deci_part
+        
+        _zero_whole:
+            PUSH AX             ; No need to subtract 1000
+            
+            MOV AX, DI          ; Move cursor to starting position
+            CALL LCD_INST
+        
+            MOV AL, "0"         ; Manually display a 0
+            CALL LCD_DATA            
+                
+        _deci_part:
+            MOV AL, "."         ; Manually display the decimal point
+            CALL LCD_DATA
+            ADD DI, 2           ; Increment DI by 2, as 2 characters were manually displayed
+        
+            POP AX              ; Retrieve AX    
+        
+        ;   Trailing zeros after the decimal point
+            CMP AX, 100         ; If the number is x.0xx
+            JAE humi_disp       ; Then print the first zero
+            
+            PUSH AX             ; Save AX
+            MOV AL, "0"         ; Manually display the first 0
+            CALL LCD_DATA
+            INC DI              ; To next position
+            POP AX              ; Retrieve AX
+            
+            CMP AX, 10          ; If the number is x.00x
+            JAE humi_disp       ; Then also print the second zero
+            
+            PUSH AX             ; Save AX
+            MOV AL, "0"         ; Manually display the first 0
+            CALL LCD_DATA
+            INC DI              ; To next position
+            POP AX              ; Retrieve AX                    
+                  
+    JMP humi_disp               ; LCD_RESULT can correctly display a x.000 value
+    
+    calc_mb:
+        MOV BX, 1000
+        MOV CX, 20350
+        MOV DI, 229    
+        CALL CALC_SENSOR        ; y = (1000x + 20350)/229 for 150 millibar to 1150 millibar
+        
+        MOV SI, OFFSET UNIT_MB  ; Display mb in LCD
+        MOV CX, UNIT_MB_L
+        MOV DI, LINE4 + 7    
+
+;   Display results to LCD screen
+    humi_disp:
+    
+    CALL LCD_RESULT
+
+    JMP main_loop  
 HLT
+
+
+
 
 ; LCD 8-bit instruction transfer function
 ; AX << Instruction to be moved (will be clobbered)
@@ -530,6 +607,42 @@ CALC_SENSOR:
    _keep_same:
    POP AX                   ; otherwise keep it the same
 RET
+
+; Software implementation of a T Flip-flop
+; CX << Bit mask
+; SI << Address of internal state variable
+; DI << Final output address
+T_FLIPFLOP:
+    PUSH AX
+    PUSH DX
+    
+    MOV DX, BUTTON_DATA     ; Data from buttons
+    XOR AX, AX
+    IN AL, DX    
+    AND AL, CL              ; Only interested in selected bit
+    
+    CMP [SI], CL            ; If the value at SI is the same as the mask
+    JE _held                ; Then the button "was" held    
+                            ; Otherwise, it was in the released state
+    
+    ; _released:
+    CMP AL, CL               ; If the current state is then 1
+    JNE _button_end         ; Then it indicates a rising edge
+    
+    NOT BYTE PTR [DI]       ; Rising edge, so toggle the output
+    MOV [SI], CL            ; Finished rising edge logic
+    JMP _button_end
+    
+    _held:
+    CMP AL, 0                   ; If the current state is then 0
+    JNE _button_end             ; Then it indicates a falling edge
+    
+    MOV BYTE PTR [SI], 0        ; Finished falling edge logic
+    
+    _button_end:
+    POP DX                      
+    POP AX
+RET 
 
 ; Software delay loop
 DELAY:
