@@ -24,7 +24,7 @@
 ;   Determine from button if temperature to be displayed is in C or F
 ;   Grab data from temperature sensor
 ;   Decide if any of the LED indicators should be turned on or not
-;   Manipulate data from ADC and convert if necessary
+;   Manipulate data from ADC
 ;   Display results to LCD screen
 ;
 ; Relative Humidity:
@@ -109,15 +109,15 @@ DATA    SEGMENT
     DISP4       DB "Pres.:              "
     DISP4_L     EQU $ - DISP4
     
-    UNIT_C      DB " dC    "
+    UNIT_C      DB " dC     "
     UNIT_C_L    EQU $ - UNIT_C
-    UNIT_F      DB " dF    "
+    UNIT_F      DB " dF     "
     UNIT_F_L    EQU $ - UNIT_F
-    UNIT_RH     DB "% RH  "
+    UNIT_RH     DB "% RH   "
     UNIT_RH_L   EQU $ - UNIT_RH
-    UNIT_ATM    DB " atm   "
+    UNIT_ATM    DB " atm    "
     UNIT_ATM_L  EQU $ - UNIT_ATM
-    UNIT_MB     DB " atm   "
+    UNIT_MB     DB " mb    "
     UNIT_MB_L   EQU $ - UNIT_MB
 
     ; Variables    
@@ -125,7 +125,9 @@ DATA    SEGMENT
     PRES_FF     DB 0        ; For software T flip-flop implementation (rising edge)
     
     TEMP_TOGGLE DB 0        ; 0 = Celsius   1 = Fahrenheit
-    PRES_TOGGLE DB 0        ; 0 = atm       1 = mb 
+    PRES_TOGGLE DB 0        ; 0 = atm       1 = mb
+    
+    TEMP_NEGATE DB 0        ; Workaround for IDIV not working as intended 
                      
 DATA    ENDS
 
@@ -195,7 +197,7 @@ START:
 
 main_loop:
 ; Temperature
-    ; Determine from button if temperature to be displayed is in C or F
+;   Determine from button if temperature to be displayed is in C or F
     MOV DX, BUTTON_DATA     ; Data from buttons
     XOR AX, AX
     IN AL, DX    
@@ -209,35 +211,69 @@ main_loop:
     JNE temp_button_end     ; Then it indicates a rising edge
     
     NOT TEMP_TOGGLE         ; Rising edge, so toggle the output
-    MOV [TEMP_FF], 1        ; Finished rising edge logic
+    MOV TEMP_FF, 1          ; Finished rising edge logic
     JMP temp_button_end
     
     temp_held:
-    CMP AL, 0               ; If the current state is then 0
-    JNE temp_button_end     ; Then it indicates a falling edge
+    CMP AL, 0                   ; If the current state is then 0
+    JNE temp_button_end         ; Then it indicates a falling edge
     
-    MOV [TEMP_FF], 0        ; Finished falling edge logic
+    MOV TEMP_FF, 0              ; Finished falling edge logic
     
-    temp_button_end:
-    MOV DX, LED_LIGHTS
-    MOV AL, [TEMP_TOGGLE]
-    OUT DX, AL    
-    
-; Grab data from temperature sensor
-;    MOV AX, TEMP_SELECT     
-;    CALL ADC_REQUEST
+    temp_button_end:    
+;   Grab data from temperature sensor
+    MOV AX, TEMP_SELECT     
+    CALL ADC_REQUEST
        
-; Decide if any of the LED indicators should be turned on or not
-    ; Notes
-    ; Dangerously Hot: 42C
-    ; Caution Heat: 33C
-    ; Cold: 20C
-    ; To be implemented later
+;   Decide if any of the LED indicators should be turned on or not
+    ; Implement PAGASA Heat Index Chart indicators
+    ; To be implemented last
 
-; Manipulate data from ADC and convert if necessary
-
-
-; Display results to LCD screen
+;   Manipulate data from ADC
+    MOV TEMP_NEGATE, 0          ; Zero out the negative indicator
+    CMP [TEMP_TOGGLE], 0        ; If current state is 0, then value to calculate is in Celsius
+    JNE calc_fah                ; Otherwise, it is in Fahrenheit
+    
+    ; calc_cel:
+        MOV BX, 165
+        MOV CX, -11750
+        MOV DI, 236    
+        CALL CALC_SENSOR        ; y = (165x - 11750)/236 for -40C to 125C
+        
+        MOV SI, OFFSET UNIT_C   ; Display C in LCD
+        MOV CX, UNIT_C_L          
+    JMP temp_disp
+    
+    calc_fah:
+        MOV BX, 297
+        MOV CX, -13598
+        MOV DI, 236    
+        CALL CALC_SENSOR        ; y = (297x - 13598)/236 for -40F to 257F
+        
+        MOV SI, OFFSET UNIT_F   ; Display F in LCD
+        MOV CX, UNIT_F_L    
+       
+;   Display results to LCD screen
+    temp_disp:
+    MOV DI, LINE2 + 7           ; Position in LCD
+    
+    TEST [TEMP_NEGATE], 1       ; Check if temperature is negative
+    JZ not_negative
+    
+    ; is_negative:       
+        PUSH AX                 ; Save number
+        
+        MOV AX, DI              ; Move cursor to starting position
+        CALL LCD_INST
+        INC DI                  ; To next position
+        
+        MOV AL, "-"             ; Display the negative sign
+        CALL LCD_DATA
+        
+        POP AX                  ; Retrieve number
+    
+    not_negative:    
+    CALL LCD_RESULT    
 
 ; Relative Humidity
     ; Grab data from relative humidity sensor
@@ -383,7 +419,7 @@ LCD_RESULT:
                             ; SI untouched
                             ; DI = DI + CX right after the division loop
     CALL LCD_PRINT          ; Display the unit                             
-        
+    
     POP DX                  ; Housekeeping
     POP BX    
 RET
@@ -445,6 +481,7 @@ RET
 CALC_SENSOR:
 ; Multiplication AX * BX = (DX AX)
     XOR AH, AH              ; Clear AH and flags
+    XOR DX, DX
     MUL BX                  ; Result is 32-bit, split across (DX AX)
     
 ; Addition (DX AX) + CX = (DX AX)
@@ -457,11 +494,41 @@ CALC_SENSOR:
     JGE _not_negative       ; If CX is positive, then no need to correct result
     DEC DX                  ; Otherwise, subtract 1 from high word    
     _not_negative:          ; Basically sign extending CX to 32-bit
-
+    
+    ; Negative Temperature workaround
+    ;   As it seems that IDIV DI when (DX AX) is negative throws an interrupt rather than dividing 
+    TEST DX, 08000H         ; Check if DX is negative
+    JZ _normal_div                                    
+                            ; AX is sufficient as largest negative value would be
+                            ; 165 * 14 - 11750 = -9440, which will fit in a single register
+    
+    MOV TEMP_NEGATE, 1      ; Set the negative indicator                         
+    NEG AX                  ; Change sign of AX to positive                           
+    XOR DX, DX              ; Clear DX
+            
+    _normal_div:
 ; Division (DX AX) / DI = AX
-    IDIV DI                 ; Signed divide.
-                            ; Whole number result in AX, Remainder in DX    
+    DIV DI                  ; Unsigned divide.
+                            ; Whole number result in AX, Remainder in DX
 
+; 0.5 round-up
+    PUSH AX                 ; Save whole number result
+    
+    MOV AX, DI              ; Transfer divisor to AX 
+    MOV CX, 2               ; Determine half of the divisor    
+    DIV CL                  ; AL = half of DI       AH = remainder (0 or 1)    
+    XOR AH, AH              ; Clear AH
+
+    CMP DX, AX              ; If the fractional part is at least half
+    JB _keep_same           ; Then round up
+    
+    ; _round_up
+    POP AX
+    INC AX                  ; Add 1 to final result
+    RET    
+   
+   _keep_same:
+   POP AX                   ; otherwise keep it the same
 RET
 
 ; Software delay loop
