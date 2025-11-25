@@ -38,6 +38,10 @@
 ;   Manipulate data from ADC
 ;   Display results to LCD screen
 ;
+; Apparent Temperature:
+;   Grab value from look-up table
+;   Display results to LED indicators
+;
 ; Repeat forever starting from Temperature
 
 DATA    SEGMENT
@@ -67,10 +71,8 @@ DATA    SEGMENT
     LINE3       EQU 094H
     LINE4       EQU 0D4H                                                                             
     
-    LED_LIGHTS  EQU 074H    ; LED indicators
-                            ; ---C ---H
-                            ; ---C ---- COLD LED indicator
-                            ; ---- ---H HOT LED indicator
+    LED_LIGHTS  EQU 074H    ; Heat index LED indicators (low nibble only) 
+                            ; ---- 4321 Of increasing severity
 
     
     P7_COM_REG  EQU 07EH    ; PORT7 Command Register (8255)
@@ -110,9 +112,9 @@ DATA    SEGMENT
     DISP4       DB "Pres.:              "
     DISP4_L     EQU $ - DISP4
     
-    UNIT_C      DB " dC     "
+    UNIT_C      DB " ", 0DFH, "C     "  ; DFH is the degree symbol   
     UNIT_C_L    EQU $ - UNIT_C
-    UNIT_F      DB " dF     "
+    UNIT_F      DB " ", 0DFH, "F     "
     UNIT_F_L    EQU $ - UNIT_F
     UNIT_RH     DB "% RH   "
     UNIT_RH_L   EQU $ - UNIT_RH
@@ -128,8 +130,30 @@ DATA    SEGMENT
     TEMP_TOGGLE DB 0        ; 0 = Celsius   1 = Fahrenheit
     PRES_TOGGLE DB 0        ; 0 = atm       1 = mb
     
-    TEMP_NEGATE DB 0        ; Workaround for IDIV not working as intended 
-                     
+    TEMP_NEGATE DB 0        ; Workaround for IDIV not working as intended
+    
+    AIR_TEMP    DB 0        ; Variables for the apparent temperature look-up
+    REL_HUMI    DB 0
+    
+    ; Look-up tables    
+    ; Apparent Temperature Table
+    ; Determines which LEDs to light up
+    ; https://www.pagasa.dost.gov.ph/weather/heat-index
+    ; https://pubfiles.pagasa.dost.gov.ph/iaas/heat_index/Heat%20days%20survival_heat%20index_infographics_%2020220302.png 
+    ; 11 Rows    = Air Temperature starting at 25C and increasing by 1C
+    ; 34 Columns = Relatve Humidity starting at 0% and increasing by 10%
+    ;              25C  26C  27C  28C  29C  30C  31C  32C  33C  34C  35C  36C  37C  38C  39C  40C  41C  42C  43C  44C  45C  46C  47C  48C  49C  50C  51C  52C  53C  54C  55C  56C  57C  58C           
+    APP_TEMP    DB 00H, 00H, 00H, 00H, 00H, 01H, 01H, 01H, 01H, 01H, 01H, 01H, 01H, 03H, 03H, 03H, 03H, 03H, 03H, 03H, 03H, 03H, 03H, 03H, 07H, 07H, 07H, 07H, 07H, 07H, 07H, 07H, 07H, 07H ;   0%
+                DB 00H, 00H, 00H, 00H, 01H, 01H, 01H, 01H, 01H, 01H, 01H, 03H, 03H, 03H, 03H, 03H, 03H, 03H, 03H, 03H, 07H, 07H, 07H, 07H, 07H, 07H, 07H, 07H, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH ;  10%
+                DB 00H, 00H, 00H, 01H, 01H, 01H, 01H, 01H, 01H, 01H, 03H, 03H, 03H, 03H, 03H, 03H, 03H, 07H, 07H, 07H, 07H, 07H, 07H, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH ;  20%
+                DB 00H, 00H, 00H, 01H, 01H, 01H, 01H, 01H, 03H, 03H, 03H, 03H, 03H, 03H, 03H, 07H, 07H, 07H, 07H, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH ;  30%
+                DB 00H, 00H, 01H, 01H, 01H, 01H, 01H, 03H, 03H, 03H, 03H, 03H, 03H, 07H, 07H, 07H, 07H, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH ;  40%
+                DB 00H, 00H, 01H, 01H, 01H, 01H, 03H, 03H, 03H, 03H, 03H, 07H, 07H, 07H, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH ;  50%
+                DB 00H, 01H, 01H, 01H, 01H, 03H, 03H, 03H, 03H, 07H, 07H, 07H, 07H, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH ;  60%
+                DB 00H, 01H, 01H, 01H, 03H, 03H, 03H, 03H, 07H, 07H, 07H, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH ;  70%
+                DB 01H, 01H, 01H, 01H, 03H, 03H, 03H, 07H, 07H, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH ;  80%
+                DB 01H, 01H, 01H, 03H, 03H, 03H, 07H, 07H, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH ;  90%
+                DB 01H, 01H, 03H, 03H, 03H, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH, 0FH ; 100%                         
 DATA    ENDS
 
 STACK   SEGMENT PARA STACK
@@ -198,7 +222,7 @@ START:
 
 main_loop:
 ; Temperature
-;   Determine from button if temperature to be displayed is in C or F
+;   Determine from button if temperature to be displayed is in C or F    
     MOV CX, TEMP_MASK
     MOV SI, OFFSET TEMP_FF
     MOV DI, OFFSET TEMP_TOGGLE    
@@ -207,27 +231,30 @@ main_loop:
 ;   Grab data from temperature sensor
     MOV AX, TEMP_SELECT     
     CALL ADC_REQUEST
-       
-;   Decide if any of the LED indicators should be turned on or not
-    ; Implement PAGASA Heat Index Chart indicators
-    ; To be implemented last
-
-;   Manipulate data from ADC
-    MOV TEMP_NEGATE, 0          ; Zero out the negative indicator
-    CMP [TEMP_TOGGLE], 0        ; If current state is 0, then value to calculate is in Celsius
-    JNE calc_fah                ; Otherwise, it is in Fahrenheit
     
+    PUSH AX                     ; Make a copy of the ADC result
+
+;   Manipulate data from ADC        
     ; calc_cel:
+    ; Must calculate Celsius value for the apparent temperature look-up later
+        MOV TEMP_NEGATE, 0      ; Zero out the negative indicator        
         MOV BX, 165
         MOV CX, -11750
         MOV DI, 236    
         CALL CALC_SENSOR        ; y = (165x - 11750)/236 for -40C to 125C
         
+        MOV [AIR_TEMP], AL      ; Store Celsius value in a variable
+        
         MOV SI, OFFSET UNIT_C   ; Display C in LCD
-        MOV CX, UNIT_C_L          
-    JMP temp_disp
+        MOV CX, UNIT_C_L
+    
+    ; Determine if the value to be displayed in the LCD is in Celsius or Fahrenheit   
+    CMP [TEMP_TOGGLE], 1        ; If current state is 1, then calculate value in Fahrenheit
+    JB temp_disp                ; Otherwise, keep it in Celsius          
     
     calc_fah:
+        MOV TEMP_NEGATE, 0      ; Zero out the negative indicator
+        POP AX                  ; Retrieve the copied ADC value
         MOV BX, 297
         MOV CX, -13598
         MOV DI, 236    
@@ -268,6 +295,8 @@ main_loop:
     MOV CX, -4800
     MOV DI, 203    
     CALL CALC_SENSOR        ; y = (100x - 4800)/203
+    
+    MOV [REL_HUMI], AL      ; Store Relative Humidity in a variable
 
     ; Display results to LCD screen
     MOV SI, OFFSET UNIT_RH
@@ -363,12 +392,64 @@ main_loop:
         MOV DI, LINE4 + 7    
 
 ;   Display results to LCD screen
-    humi_disp:
-    
+    humi_disp:    
     CALL LCD_RESULT
 
-    JMP main_loop  
+; Apparent Temperature
+    XOR CX, CX                  ; Clear CX register
+    
+;   Grab value from look-up table
+    ; Bounds checking
+    TEST TEMP_NEGATE, 1         ; If C or F is negative
+    JNZ no_leds                 ; Then dim all leds
+    
+    CMP BYTE PTR [AIR_TEMP], 25 ; Note: -18C to 0C is positive when converted to Fahrenheit
+    JB no_leds                  ; This condition can also correctly filter out these values
+    
+    CMP BYTE PTR [AIR_TEMP], 58 ; If air temperature is greater than 58C
+    JA all_leds                 ; Then light up all leds
+    
+    ; Index to table
+    XOR AX, AX                  ; Clear AX
+    MOV AL, [REL_HUMI]          ; Copy value of relative humidity to AX
+    
+    MOV BX, 10                  ; Divide relative humidity by 10 
+    DIV BL                      ; Tens place in AL
+    
+    CMP AH, 5                   ; Round up if ones place is from 5 to 9
+    JB _not_round
+    INC AL
+    _not_round:
+    XOR AH, AH                  ; Clear remainder in AH
+    
+    MOV BX, 34                  ; Calculate row offset
+    MUL BX                      ; 34 * 10 = 340 which can fit in a single 16-bit register
+    
+    MOV BL, [AIR_TEMP]          ; Copy value of air temperature to BX
+    SUB BL, 25                  ; Calculate column offset
+    
+    ADD BX, AX                  ; Combine row and column offset
+    MOV SI, OFFSET APP_TEMP     ; Pointer to table
+    MOV CL, [BX + SI]           ; Retrieve value from table using offset
+    JMP out_leds
+
+    ; Otherwise conditions                
+    no_leds:
+    MOV CL, 0 
+    JMP out_leds
+    
+    all_leds:
+    MOV CL, 0FH
+
+;   Display results to LED indicators    
+    out_leds:
+    MOV DX, LED_LIGHTS
+    MOV AL, CL
+    OUT DX, AL
+    JMP main_loop
+      
 HLT
+
 
 
 
@@ -602,10 +683,18 @@ CALC_SENSOR:
     ; _round_up
     POP AX
     INC AX                  ; Add 1 to final result
-    RET    
+    JMP _pos_zero    
    
-   _keep_same:
-   POP AX                   ; otherwise keep it the same
+    _keep_same:
+    POP AX                  ; otherwise keep it the same
+
+; Negative zero fix
+_pos_zero:
+    CMP AX, 0               ; If the final result is 0
+    JNE _skip               ; Then no negative sign should be printed
+    MOV TEMP_NEGATE, 0
+    
+    _skip:
 RET
 
 ; Software implementation of a T Flip-flop
